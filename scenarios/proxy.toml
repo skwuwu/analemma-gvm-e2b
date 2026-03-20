@@ -1,0 +1,40 @@
+[server]
+listen = "0.0.0.0:8080"
+
+[enforcement]
+default_decision = { type = "Delay", milliseconds = 300 }
+
+[enforcement.on_block]
+deny             = "halt"
+require_approval = "soft_pivot"
+throttle         = "rollback"
+infrastructure_failure = "halt"
+
+[srr]
+network_file  = "config/srr_network.toml"
+semantic_file = "config/srr_semantic.toml"
+hot_reload    = false
+
+[policies]
+directory  = "config/policies/"
+hot_reload = false
+
+[operations]
+registry_file = "config/operation_registry.toml"
+
+[secrets]
+file    = "config/secrets.toml"
+key_env = "GVM_SECRETS_KEY"
+
+[wal]
+batch_window_ms = 2
+max_batch_size  = 64
+
+# Redirect all demo upstream hosts to the local mock server
+[dev]
+host_overrides = {
+  "api.stripe.com"    = "127.0.0.1:9090",
+  "api.bank.com"      = "127.0.0.1:9090",
+  "unknown-api.com"   = "127.0.0.1:9090",
+  "gmail.googleapis.com" = "127.0.0.1:9090"
+}

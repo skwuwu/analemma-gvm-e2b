@@ -1,0 +1,3 @@
+# Symlink target — global.toml is placed here by demo.py setup.
+# This file is a placeholder; demo.py writes the real policy at runtime.
+rules = []

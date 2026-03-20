@@ -1,0 +1,14 @@
+# e2b template configuration for Analemma GVM demo.
+# Register once with: e2b template build
+# Then reference by template_id in demo.py.
+
+dockerfile = ".e2b/Dockerfile"
+template_name = "analemma-gvm"
+
+# Increase from default 512MB — GVM proxy is lightweight but we want headroom
+# for concurrent demo scenarios.
+memory_mb = 1024
+vcpus = 2
+
+# Keep sandbox alive for interactive sessions
+start_cmd = "/bin/bash"

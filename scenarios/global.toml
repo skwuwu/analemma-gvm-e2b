@@ -1,0 +1,42 @@
+# Demo policy: three scenarios in one file.
+# Priority ordering: Deny(5) > RequireApproval(4) > Throttle(2) > Allow(0)
+
+[[rules]]
+id       = "demo-deny-critical"
+priority = 100
+description = "Block all CRITICAL sensitivity operations — no exceptions"
+conditions = [
+    { field = "resource.sensitivity", operator = "Eq", value = "Critical" },
+]
+decision   = { type = "Deny" }
+ic_level   = 3
+
+[[rules]]
+id       = "demo-throttle-bulk"
+priority = 50
+description = "Rate-limit bulk data export to 5 req/min"
+conditions = [
+    { field = "operation", operator = "StartsWith", value = "bulk." },
+]
+decision = { type = "Throttle", requests_per_minute = 5 }
+ic_level  = 2
+
+[[rules]]
+id       = "demo-require-approval-pii"
+priority = 80
+description = "Require human approval for PII access"
+conditions = [
+    { field = "resource.sensitivity", operator = "Eq", value = "PII" },
+]
+decision = { type = "RequireApproval" }
+ic_level  = 3
+
+[[rules]]
+id       = "demo-allow-medium"
+priority = 10
+description = "Allow standard Medium sensitivity operations"
+conditions = [
+    { field = "resource.sensitivity", operator = "Eq", value = "Medium" },
+]
+decision = { type = "Allow" }
+ic_level  = 1
