@@ -1,52 +1,61 @@
 # Analemma GVM — e2b Demo
 
-Interactive governance demo running inside an [e2b](https://e2b.dev) sandbox.
+Five governance scenarios running inside an [e2b](https://e2b.dev) cloud sandbox.
+GVM proxy starts inside the sandbox, runs enforcement, writes an immutable WAL.
 
-Pulls the pre-built GVM proxy image from `ghcr.io/skwuwu/analemma-gvm:latest`,
-starts the proxy, and runs four governance scenarios in under 60 seconds.
+## What you'll see
 
-## Scenarios
-
-| Sensitivity | Operation | Expected Decision |
-|---|---|---|
-| CRITICAL | delete.production_database | 403 Deny (IC-3) |
-| PII | read.user_profile | 403 RequireApproval (IC-3) |
-| Medium | bulk.export_report ×6 | 429 Throttle (IC-2) |
-| Medium | read.document | 200 Allow (IC-1) |
+| Scenario | Agent action | GVM decision |
+|----------|-------------|--------------|
+| 1. API key theft | Reads `STRIPE_KEY` from env | Deny — key never reaches agent |
+| 2. Graduated enforcement | Sensitivity escalation across 3 ops | Allow → Delay → Deny |
+| 3. Merkle audit | WAL tamper attempt | Integrity check fails with proof |
+| 4. Forgery detection | `gvm.read` declared, `POST /transfer` sent | Cross-layer forgery → Deny |
+| 5. Auto-rollback | `auto_checkpoint` + forced Deny mid-sequence | `GVMRollbackError` triggered, state restored |
 
 ## Quick Start
 
 ```bash
+export E2B_API_KEY=your_api_key_here
 pip install -r requirements.txt
-
-# Build the e2b template once (requires e2b CLI)
-e2b auth login
-e2b template build --name analemma-gvm
-
-# Run the demo
-export E2B_API_KEY=your_api_key
 python demo.py
 ```
 
-## Repository Structure
+Total time: ~2 minutes.
+
+Get an API key at [e2b.dev/dashboard](https://e2b.dev/dashboard).
+
+## First-time setup (one-time only)
+
+The demo uses a pre-built e2b template. Build it once:
+
+```bash
+pip install e2b-cli
+e2b auth login
+e2b template build --name analemma-gvm
+```
+
+This pulls `ghcr.io/skwuwu/analemma-gvm:latest` and registers the template under your account.
+After that, `python demo.py` works without rebuilding.
+
+## Repository layout
 
 ```
 .e2b/
-  Dockerfile          # e2b template: ghcr.io/skwuwu/analemma-gvm + demo tools
-e2b.toml              # template config (1 vCPU, 1GB RAM)
+  Dockerfile          # e2b template: analemma-gvm image + Python demo deps
+e2b.toml              # template config (1 vCPU, 1 GB RAM)
 scenarios/
-  proxy.toml          # proxy config (no NATS/Redis — standalone WAL only)
-  global.toml         # policy: Deny/RequireApproval/Throttle/Allow rules
-  secrets.toml        # fake demo credentials
+  proxy.toml          # proxy config (standalone WAL, no external deps)
+  global.toml         # ABAC policy: Deny/RequireApproval/Throttle/Allow
+  srr_network.toml    # SRR network rules
+  secrets.toml        # demo credentials (fake — held by proxy, not agent)
   policies/
     global.toml       # policy file (written by demo.py at runtime)
-scripts/
-  run_scenario.sh     # manual scenario runner for interactive exploration
-demo.py               # main demo script (Python, e2b SDK)
+demo.py               # main demo (Python, e2b SDK + gvm SDK)
 requirements.txt
 ```
 
-## Core Repository
+## Core repository
 
-GVM source: [skwuwu/Analemma-GVM](https://github.com/skwuwu/Analemma-GVM)
+Source and docs: [skwuwu/Analemma-GVM](https://github.com/skwuwu/Analemma-GVM)
 Docker image: `ghcr.io/skwuwu/analemma-gvm:latest`
