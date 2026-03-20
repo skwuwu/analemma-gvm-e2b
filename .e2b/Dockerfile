@@ -8,7 +8,7 @@
 # Use in demo.py:
 #   Sandbox(template="analemma-gvm")
 
-FROM ghcr.io/skwuwu/analemma-gvm:latest
+FROM ghcr.io/skwuwu/analemma-gvm@sha256:40d56438e24d93d8db0a109c30b39219e9661eeaa09a002314b20db5aa67116c
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \

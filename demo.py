@@ -27,6 +27,7 @@ import os
 import sys
 import time
 from e2b import Sandbox
+from e2b.sandbox.commands.command_handle import CommandExitException
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -51,11 +52,14 @@ def banner(title: str, tier: str = ""):
 def wait_for_proxy(sandbox: Sandbox, timeout: int = 20) -> bool:
     deadline = time.time() + timeout
     while time.time() < deadline:
-        r = sandbox.process.start_and_wait(
-            f"curl -sf {PROXY_URL}/gvm/health -o /dev/null -w '%{{http_code}}'"
-        )
-        if r.stdout.strip() in ("200", "404"):
-            return True
+        try:
+            r = sandbox.commands.run(
+                f"curl -sf {PROXY_URL}/gvm/health -o /dev/null -w '%{{http_code}}'"
+            )
+            if r.stdout.strip() in ("200", "404"):
+                return True
+        except CommandExitException:
+            pass
         time.sleep(0.5)
     return False
 
@@ -81,7 +85,7 @@ def curl(sandbox: Sandbox, method: str, url: str,
         f"{h_args}{data_arg}"
         f" --max-time 5"
     )
-    result = sandbox.process.start_and_wait(cmd)
+    result = sandbox.commands.run(cmd)
     lines = result.stdout.strip().split("\n")
     code = lines[-1].strip()
     body_text = "\n".join(lines[:-1]).strip()
@@ -94,6 +98,7 @@ def curl(sandbox: Sandbox, method: str, url: str,
 
 def write_config(sandbox: Sandbox):
     """Write all proxy config files into the sandbox."""
+    sandbox.commands.run("sudo chown -R user:user /app/data && mkdir -p /app/config/policies")
     for src, dst in [
         ("scenarios/proxy.toml",            "/app/config/proxy.toml"),
         ("scenarios/secrets.toml",           "/app/config/secrets.toml"),
@@ -102,11 +107,7 @@ def write_config(sandbox: Sandbox):
         ("scenarios/operation_registry.toml","/app/config/operation_registry.toml"),
         ("scenarios/policies/global.toml",   "/app/config/policies/global.toml"),
     ]:
-        sandbox.filesystem.write(dst, open(src).read())
-
-    sandbox.process.start_and_wait(
-        "mkdir -p /app/config/policies /app/data"
-    )
+        sandbox.files.write(dst, open(src, encoding="utf-8").read())
 
 
 # ── Scenario 1: API Key Theft Prevention ──────────────────────────────────
@@ -120,7 +121,7 @@ def scenario_1(sandbox: Sandbox):
     )
 
     # Without GVM: agent would try to read env var and fail (or expose key in logs)
-    no_key = sandbox.process.start_and_wait(
+    no_key = sandbox.commands.run(
         "echo STRIPE_KEY=${STRIPE_KEY:-<not set>}"
     )
     console.print(f"  Agent env: [red]{no_key.stdout.strip()}[/red]")
@@ -195,8 +196,8 @@ def scenario_3(sandbox: Sandbox):
     )
 
     # Show last WAL entry
-    wal_tail = sandbox.process.start_and_wait(
-        "tail -2 /app/data/audit.wal 2>/dev/null | head -1"
+    wal_tail = sandbox.commands.run(
+        "tail -2 /app/data/wal.log 2>/dev/null | head -1"
     )
     raw = wal_tail.stdout.strip()
     if raw:
@@ -212,35 +213,53 @@ def scenario_3(sandbox: Sandbox):
     else:
         console.print("  [dim](WAL empty — Scenarios 1 & 2 may not have written IC-2+ events yet)[/dim]")
 
-    # Tamper: change one decision field
-    tamper = sandbox.process.start_and_wait(
+    # Tamper: find last GVMEvent line, change its decision while keeping event_hash intact
+    tamper = sandbox.commands.run(
         "python3 -c \""
         "import json, sys\n"
-        "lines = open('/app/data/audit.wal').readlines()\n"
+        "lines = open('/app/data/wal.log').readlines()\n"
         "if not lines: sys.exit(0)\n"
-        "entry = json.loads(lines[-1])\n"
-        "entry['decision'] = 'Allow'  # tamper\n"
-        "lines[-1] = json.dumps(entry) + '\\n'\n"
-        "open('/app/data/audit.wal', 'w').writelines(lines)\n"
-        "print('tampered')\n"
+        "# Find last line that is a GVMEvent (has event_id and event_hash)\n"
+        "idx = None\n"
+        "for i in range(len(lines)-1, -1, -1):\n"
+        "    try:\n"
+        "        e = json.loads(lines[i])\n"
+        "        if 'event_id' in e and e.get('event_hash'):\n"
+        "            idx = i\n"
+        "            break\n"
+        "    except: pass\n"
+        "if idx is None: print('no hashable event found'); sys.exit(0)\n"
+        "entry = json.loads(lines[idx])\n"
+        "orig = entry['decision']\n"
+        "# Flip decision to something clearly different, keep event_hash unchanged\n"
+        "entry['decision'] = 'TAMPERED_ALLOW'\n"
+        "lines[idx] = json.dumps(entry) + '\\n'\n"
+        "open('/app/data/wal.log', 'w').writelines(lines)\n"
+        "print(f'tampered line {idx}: {str(orig)[:40]} -> TAMPERED_ALLOW')\n"
         "\""
     )
-    console.print(f"  Tamper: [red]{tamper.stdout.strip()}[/red] — changed last entry's decision to 'Allow'")
+    console.print(f"  Tamper: [red]{tamper.stdout.strip()}[/red]")
 
     # Verify with gvm-cli
-    verify = sandbox.process.start_and_wait(
-        "gvm audit verify --wal /app/data/audit.wal 2>&1 || true"
+    verify = sandbox.commands.run(
+        "gvm audit verify --wal /app/data/wal.log 2>&1 || true"
     )
     output = verify.stdout.strip()
-    if "tamper" in output.lower() or "invalid" in output.lower() or "fail" in output.lower() or "mismatch" in output.lower():
-        console.print(f"  gvm audit verify: [red]{output[:120]}[/red]")
+    # Find the key summary lines to display
+    summary_lines = [
+        line.strip() for line in output.splitlines()
+        if any(kw in line for kw in ("Total lines", "Hash mismatch", "TAMPER", "WARNING", "OK:"))
+    ]
+    summary = "\n  ".join(summary_lines) if summary_lines else output[:200]
+    if "tamper" in output.lower() or "mismatch" in output.lower():
+        console.print(f"  gvm audit verify:\n  [red]{summary}[/red]")
         console.print(
             "\n  [bold green]Result:[/bold green] "
             "Merkle chain detected tampering. "
             "Regulators get mathematical proof of log integrity."
         )
     else:
-        console.print(f"  gvm audit verify output: [dim]{output[:120]}[/dim]")
+        console.print(f"  gvm audit verify output: [dim]{summary}[/dim]")
 
 
 # ── Scenario 4: Agent Forgery Detection ───────────────────────────────────
@@ -291,8 +310,8 @@ def scenario_4(sandbox: Sandbox):
         "max_strict(Allow, Deny) = Deny.[/dim]\n"
     )
 
-    sandbox.filesystem.write("/tmp/forgery_agent.py", FORGERY_AGENT_SCRIPT)
-    result = sandbox.process.start_and_wait(
+    sandbox.files.write("/tmp/forgery_agent.py", FORGERY_AGENT_SCRIPT)
+    result = sandbox.commands.run(
         f"GVM_PROXY_URL={PROXY_URL} python3 /tmp/forgery_agent.py 2>&1"
     )
     output = result.stdout.strip()
@@ -439,8 +458,8 @@ def scenario_5(sandbox: Sandbox):
         "Agent resumes without restarting. Token savings quantified.[/dim]\n"
     )
 
-    sandbox.filesystem.write("/tmp/rollback_agent.py", ROLLBACK_AGENT_SCRIPT)
-    result = sandbox.process.start_and_wait(
+    sandbox.files.write("/tmp/rollback_agent.py", ROLLBACK_AGENT_SCRIPT)
+    result = sandbox.commands.run(
         f"GVM_PROXY_URL={PROXY_URL} python3 /tmp/rollback_agent.py 2>&1"
     )
     for line in result.stdout.strip().split("\n"):
@@ -468,14 +487,14 @@ def run_demo():
         border_style="cyan",
     ))
 
-    with Sandbox(template=TEMPLATE) as sandbox:
+    with Sandbox.create(TEMPLATE) as sandbox:
 
         # ── Setup ──
         with console.status("Writing config…"):
             write_config(sandbox)
 
         with console.status("Starting mock upstream server…"):
-            sandbox.process.start(
+            sandbox.commands.run(
                 f"python3 -c \""
                 f"import http.server, json\n"
                 f"class H(http.server.BaseHTTPRequestHandler):\n"
@@ -492,32 +511,40 @@ def run_demo():
                 f"    self._send({{'received_authorization':auth,'messages':[],'status':'ok'}})\n"
                 f"  def do_POST(self): self._send({{'status':'ok'}})\n"
                 f"http.server.HTTPServer(('127.0.0.1',{MOCK_PORT}),H).serve_forever()\n"
-                f"\""
+                f"\"",
+                background=True,
             )
             time.sleep(0.5)
 
         with console.status("Installing Python SDK from core repo…"):
-            install = sandbox.process.start_and_wait(
-                "pip install -q "
+            install = sandbox.commands.run(
+                "pip install -q --break-system-packages "
                 "git+https://github.com/skwuwu/Analemma-GVM.git#subdirectory=sdk/python"
-                " && echo ok"
+                " && echo ok",
+                timeout=120,
             )
             if "ok" not in install.stdout:
                 # Fallback: copy from image if pre-installed
-                sandbox.process.start_and_wait(
+                sandbox.commands.run(
                     "cp -r /app/sdk/python/gvm /sdk 2>/dev/null || true"
                 )
 
         with console.status("Starting GVM proxy…"):
-            sandbox.process.start(
-                f"GVM_SECRETS_KEY=demo-key-32bytes-padded-here "
-                f"GVM_CONFIG=/app/config/proxy.toml "
-                f"gvm-proxy > /app/data/proxy.log 2>&1"
+            sandbox.files.write("/tmp/start_proxy.sh",
+                "#!/bin/bash\n"
+                "cd /app\n"
+                "export GVM_SECRETS_KEY=demo-key-32bytes-padded-here\n"
+                "exec gvm-proxy > /tmp/proxy.log 2>&1\n"
             )
+            sandbox.commands.run("chmod +x /tmp/start_proxy.sh")
+            sandbox.commands.run("/tmp/start_proxy.sh", background=True)
             ready = wait_for_proxy(sandbox)
             if not ready:
-                log = sandbox.process.start_and_wait("tail -20 /app/data/proxy.log")
-                console.print(f"[red]Proxy failed:[/red]\n{log.stdout}")
+                try:
+                    log = sandbox.commands.run("cat /tmp/proxy.log 2>/dev/null || echo '(no log)'")
+                    console.print(f"[red]Proxy failed to start:[/red]\n{log.stdout}")
+                except CommandExitException as e:
+                    console.print(f"[red]Proxy failed to start:[/red] {e}")
                 return
 
         console.print("[green]Setup complete.[/green] Running scenarios…")

@@ -1,31 +1,19 @@
 # SRR network rules for e2b demo.
-# Provides the three distinct decisions used in Scenario 2.
 
 [[rules]]
-id          = "allow-stripe"
-priority    = 100
-description = "Allow Stripe read operations"
-method      = "GET"
-host_pattern = { type = "Exact", value = "api.stripe.com" }
-path_pattern = { type = "Prefix", value = "/" }
-decision    = { type = "Allow" }
+method   = "GET"
+pattern  = "api.stripe.com/{any}"
+decision = { type = "Allow" }
+description = "Allow Stripe read operations (GET)"
 
 [[rules]]
-id          = "deny-bank-transfer"
-priority    = 200
-description = "Wire transfer blocked — requires manual approval"
-method      = "POST"
-host_pattern = { type = "Exact", value = "api.bank.com" }
-path_pattern = { type = "Prefix", value = "/transfer" }
-decision    = { type = "Deny" }
+method   = "POST"
+pattern  = "api.bank.com/transfer{any}"
+decision = { type = "Deny", reason = "Wire transfer blocked — requires manual approval" }
+description = "Block bank wire transfers"
 
 [[rules]]
-id          = "deny-cloud-metadata"
-priority    = 1000
-description = "SSRF: block cloud metadata endpoint"
-method      = "GET"
-host_pattern = { type = "Exact", value = "169.254.169.254" }
-path_pattern = { type = "Prefix", value = "/" }
-decision    = { type = "Deny" }
-
-# Everything else hits Default-to-Caution (Delay 300ms) — Scenario 2 unknown-api.com
+method   = "GET"
+pattern  = "169.254.169.254/{any}"
+decision = { type = "Deny", reason = "SSRF: cloud metadata blocked" }
+description = "Block cloud metadata endpoint"
