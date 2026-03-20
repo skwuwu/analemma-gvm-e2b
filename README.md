@@ -27,16 +27,16 @@ Get an API key at [e2b.dev/dashboard](https://e2b.dev/dashboard).
 
 ## First-time setup (one-time only)
 
-The demo uses a pre-built e2b template. Build it once:
+The demo uses a pre-built e2b template (`p8db70me9zsdy33gvyyr`). To rebuild it under your own account:
 
 ```bash
-pip install e2b-cli
+npm install -g @e2b/cli
 e2b auth login
-e2b template build --name analemma-gvm
+e2b template create analemma-gvm --dockerfile .e2b/Dockerfile --cpu-count 2 --memory-mb 1024
 ```
 
-This pulls `ghcr.io/skwuwu/analemma-gvm:latest` and registers the template under your account.
-After that, `python demo.py` works without rebuilding.
+This pulls `ghcr.io/skwuwu/analemma-gvm:latest` and registers the template under your account (~50 seconds).
+Update `e2b.toml` with the new `template_id`, then `python demo.py` works without rebuilding.
 
 ## Repository layout
 
