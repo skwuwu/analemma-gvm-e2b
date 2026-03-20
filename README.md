@@ -23,6 +23,32 @@ python demo.py
 
 Total time: ~2 minutes.
 
+## No LLM required — what is mocked and why
+
+This demo shows GVM's governance layer in isolation. LLM inference is not the subject being tested.
+
+| What looks like an agent | What actually runs |
+|--------------------------|-------------------|
+| `FinanceAgent.read_data()` | `requests.get()` to a local Python mock server on port 9090 |
+| `FinanceAgent.send_report()` | `requests.post()` to the same mock server |
+| `FinanceAgent.wire_transfer()` | `requests.post()` — intercepted and Denied by GVM before reaching mock |
+| `analyze()` (step 2) | Hardcoded print — simulates LLM reasoning step |
+| Token cost numbers | Hardcoded constants in `TOKEN_COSTS` dict — representative, not measured |
+| `GVMRollbackError` in scenario 5 | Real exception raised by the GVM SDK when proxy returns 403 + rollback signal |
+
+**The mock server** (`http.server.HTTPServer` on port 9090) mimics an upstream API:
+it returns `{"status": "ok"}` for every request, and echoes the `Authorization` header
+for scenario 1. It has no business logic — it exists only to give the proxy a real TCP
+connection to enforce against.
+
+**What is real:**
+- GVM proxy binary enforcing actual HTTP requests
+- SRR rules matching on method + path
+- WAL entries written with SHA-256 event hashes
+- Merkle chain over those hashes (tamper detection in scenario 3)
+- `@ic()` decorator injecting governance headers onto real `requests.Session` calls
+- `GVMDeniedError` / `GVMRollbackError` raised from real proxy 403 responses
+
 ## First-time setup (one-time only)
 
 The demo uses a pre-built e2b template (`p8db70me9zsdy33gvyyr`). To rebuild it under your own account:
@@ -44,11 +70,10 @@ Update `e2b.toml` with the new `template_id`, then `python demo.py` works withou
 e2b.toml              # template config (1 vCPU, 1 GB RAM)
 scenarios/
   proxy.toml          # proxy config (standalone WAL, no external deps)
-  global.toml         # ABAC policy: Deny/RequireApproval/Throttle/Allow
   srr_network.toml    # SRR network rules
   secrets.toml        # demo credentials (fake — held by proxy, not agent)
   policies/
-    global.toml       # policy file (written by demo.py at runtime)
+    global.toml       # ABAC policy
 demo.py               # main demo (Python, e2b SDK + gvm SDK)
 requirements.txt
 ```
