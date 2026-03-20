@@ -16,14 +16,12 @@ GVM proxy starts inside the sandbox, runs enforcement, writes an immutable WAL.
 ## Quick Start
 
 ```bash
-export E2B_API_KEY=your_api_key_here
+e2b auth login
 pip install -r requirements.txt
 python demo.py
 ```
 
 Total time: ~2 minutes.
-
-Get an API key at [e2b.dev/dashboard](https://e2b.dev/dashboard).
 
 ## First-time setup (one-time only)
 

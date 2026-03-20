@@ -19,7 +19,6 @@ Setup (one-time):
   e2b template build --name analemma-gvm
 
 Run:
-  export E2B_API_KEY=your_key_here
   python demo.py
 """
 
@@ -541,7 +540,4 @@ def run_demo():
 
 
 if __name__ == "__main__":
-    if not os.environ.get("E2B_API_KEY"):
-        console.print("[red]E2B_API_KEY not set.[/red]")
-        sys.exit(1)
     run_demo()
