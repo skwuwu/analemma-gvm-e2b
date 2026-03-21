@@ -1,0 +1,53 @@
+{
+  "platform": "e2b",
+  "timestamp": "2026-03-21T04:10:49Z",
+  "sandbox_image": "analemma-gvm",
+  "n_warmup": 10,
+  "n_bench": 50,
+  "delay_floor_ms": 300,
+  "deny_url": "http://api.bank.com/transfer/wire-001",
+  "results": {
+    "direct": {
+      "n": 50,
+      "min": 0.209,
+      "p50": 0.221,
+      "p95": 0.277,
+      "p99": 0.291,
+      "max": 0.297,
+      "mean": 0.229
+    },
+    "gvm_allow": {
+      "n": 50,
+      "min": 0.425,
+      "p50": 0.505,
+      "p95": 0.576,
+      "p99": 0.612,
+      "max": 0.693,
+      "mean": 0.507
+    },
+    "gvm_delay": {
+      "n": 50,
+      "min": 308.499,
+      "p50": 310.411,
+      "p95": 311.273,
+      "p99": 314.243,
+      "max": 315.98,
+      "mean": 310.368
+    },
+    "gvm_deny": {
+      "n": 50,
+      "min": 2.912,
+      "p50": 3.955,
+      "p95": 4.116,
+      "p99": 4.183,
+      "max": 4.242,
+      "mean": 3.916
+    }
+  },
+  "overhead": {
+    "allow_vs_direct_ms": 0.278,
+    "deny_vs_direct_ms": 3.687,
+    "delay_above_floor_ms": 10.139,
+    "deny_vs_allow_ms": 3.409
+  }
+}

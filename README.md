@@ -23,6 +23,46 @@ python demo.py
 
 Total time: ~2 minutes.
 
+## Overhead Benchmark
+
+Measures GVM proxy latency vs. direct HTTP (N=50 per path, 10 warmup):
+
+| Path               |  p50 (ms) |  p99 (ms) | mean (ms) | vs direct    |
+|--------------------|-----------|-----------|-----------|--------------|
+| direct (no proxy)  |      0.22 |      0.29 |      0.23 | baseline     |
+| gvm Allow          |      0.51 |      0.61 |      0.51 | +0.28 ms     |
+| gvm Delay (300 ms) |    310.41 |    314.24 |    310.37 | +310.14 ms * |
+| gvm Deny           |      3.96 |      4.18 |      3.92 | +3.69 ms     |
+
+GVM enforcement overhead per request: **~0.28 ms** (policy evaluation + WAL write + credential injection).
+
+\* Delay measured at 310 ms for a 300 ms configured floor: the excess ~10 ms is WAL write overhead + timer jitter. With host_overrides correctly routing the delay target to the local mock server, the floor is hit precisely.
+
+Full results: [`bench/results.md`](bench/results.md) · [`bench/results.json`](bench/results.json)
+
+```bash
+e2b auth login
+python benchmark.py
+```
+
+### Why Deny is slower than Allow
+
+Allow returns a 200 immediately and writes the WAL entry in the background. Deny **blocks until
+the WAL entry is durably flushed to disk** before returning the 403 — that fsync is the source
+of the extra latency.
+
+This is a deliberate design choice. Cilium and Envoy use best-effort, fire-and-forget logging:
+drop the packet (or pass it), emit a log event asynchronously, move on. That trade-off is
+reasonable for network traffic — losing a flow log is operationally annoying but rarely
+consequential.
+
+AI agent actions are a different category. A wire transfer, a credential read, a file deletion —
+these are high-stakes, often irreversible operations. If the denial record is lost before it
+reaches durable storage, the audit chain breaks: a security review cannot confirm the action
+was blocked, a compliance audit cannot verify the policy was enforced, and tamper detection
+loses its anchor point. The cost of that loss far exceeds the ~3.7 ms of added latency on the
+rejection path.
+
 ## No LLM required — what is mocked and why
 
 This demo shows GVM's governance layer in isolation. LLM inference is not the subject being tested.
@@ -75,6 +115,11 @@ scenarios/
   policies/
     global.toml       # ABAC policy
 demo.py               # main demo (Python, e2b SDK + gvm SDK)
+benchmark.py          # overhead benchmark: direct vs GVM Allow/Delay/Deny
+bench/
+  runner.py           # benchmark script uploaded and run inside the sandbox
+  results.json        # last run results (machine-readable)
+  results.md          # last run results (human-readable table)
 requirements.txt
 ```
 
