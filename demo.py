@@ -26,6 +26,10 @@ import json
 import os
 import sys
 import time
+
+from dotenv import load_dotenv
+load_dotenv()
+
 from e2b import Sandbox
 from e2b.sandbox.commands.command_handle import CommandExitException
 from rich.console import Console

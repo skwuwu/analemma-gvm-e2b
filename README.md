@@ -3,6 +3,14 @@
 Five governance scenarios running inside an [e2b](https://e2b.dev) cloud sandbox.
 GVM proxy starts inside the sandbox, runs enforcement, writes an immutable WAL.
 
+## Demo
+
+<!-- Replace yCyzeUxtuWYLtwGE with the actual recording ID after upload -->
+[![asciicast](https://asciinema.org/a/yCyzeUxtuWYLtwGE.svg)](https://asciinema.org/a/yCyzeUxtuWYLtwGE)
+
+> Recorded on a live e2b cloud sandbox using the maintainer's personal API key and account.
+> No mock — the proxy, WAL, and policy engine are all running in-sandbox.
+
 ## What you'll see
 
 | Scenario | Agent action | GVM decision |
