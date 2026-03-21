@@ -15,8 +15,8 @@ GVM proxy starts inside the sandbox, runs enforcement, writes an immutable WAL.
 
 | Scenario | Agent action | GVM decision |
 |----------|-------------|--------------|
-| 1. API key theft | Reads `STRIPE_KEY` from env | Deny — key never reaches agent |
-| 2. Graduated enforcement | Sensitivity escalation across 3 ops | Allow → Delay → Deny |
+| 1. API key isolation | Agent env has no key — proxy injects post-enforcement | Agent uses the key, but can never read it |
+| 2. Graduated enforcement | Same domain, different method+path → different decision | Allow → Delay → Deny |
 | 3. Merkle audit | WAL tamper attempt | Integrity check fails with proof |
 | 4. Forgery detection | `gvm.read` declared, `POST /transfer` sent | Cross-layer forgery → Deny |
 | 5. Auto-rollback | `auto_checkpoint` + forced Deny mid-sequence | `GVMRollbackError` triggered, state restored |

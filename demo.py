@@ -3,7 +3,7 @@ Analemma GVM — e2b Demo (5 Scenarios)
 ======================================
 
 Tier 1 (no SDK, HTTP_PROXY only):
-  Scenario 1: API key theft prevention
+  Scenario 1: API key isolation
   Scenario 2: Graduated enforcement (Allow / Delay / Deny)
   Scenario 3: Tamper-evident audit log (Merkle verification)
 
@@ -114,14 +114,15 @@ def write_config(sandbox: Sandbox):
         sandbox.files.write(dst, open(src, encoding="utf-8").read())
 
 
-# ── Scenario 1: API Key Theft Prevention ──────────────────────────────────
+# ── Scenario 1: API Key Isolation ──────────────────────────────────────────
 
 def scenario_1(sandbox: Sandbox):
-    banner("Scenario 1: API Key Theft Prevention", "Tier 1")
+    banner("Scenario 1: API Key Isolation", "Tier 1")
     console.print(
-        "[dim]Agent env has NO STRIPE_KEY. GVM proxy holds the credential.\n"
-        "Agent sends a request without auth → proxy injects key → upstream receives it.\n"
-        "Agent can never read the key it just used.[/dim]\n"
+        "[dim]e2b allowOut/denyOut filters by domain — but if the domain is allowed,\n"
+        "the agent can read any key in its env and exfiltrate it via the allowed channel.\n"
+        "GVM removes the key from the agent env entirely. The proxy holds it and injects\n"
+        "it post-enforcement. The agent uses the key but can never see it.[/dim]\n"
     )
 
     # Without GVM: agent would try to read env var and fail (or expose key in logs)
@@ -141,7 +142,7 @@ def scenario_1(sandbox: Sandbox):
     console.print(f"  Upstream received Authorization: [green]{injected}[/green]")
     console.print(
         "\n  [bold green]Result:[/bold green] Agent made the call. "
-        "Agent never touched the key. GVM injected it post-enforcement."
+        "Agent never touched the key. Structural isolation, not access control."
     )
 
 
@@ -150,8 +151,10 @@ def scenario_1(sandbox: Sandbox):
 def scenario_2(sandbox: Sandbox):
     banner("Scenario 2: Graduated Enforcement", "Tier 1")
     console.print(
-        "[dim]Three requests, three different decisions.\n"
-        "Not allow/deny binary — Allow / Delay / Deny from one proxy.[/dim]\n"
+        "[dim]e2b allowOut/denyOut operates at the domain level — allow or deny the entire domain.\n"
+        "GVM operates at method + path level within a single allowed domain.\n"
+        "GET api.stripe.com/charges → Allow.  POST api.stripe.com/transfers → Deny.\n"
+        "Same domain, different decision. Domain-level filtering cannot do this.[/dim]\n"
     )
 
     cases = [
